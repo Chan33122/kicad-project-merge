@@ -6,7 +6,7 @@ breaking the schematic↔PCB link.
 
 ## Motivation
 
-PCB fabricators typically require a minimum panel size (e.g. 50×50 mm). When two small prototype boards are panelised together, standard KiCad merge methods re-annotate reference designators, breaking the match between the physical silkscreen, schematic, BOM, and test procedures. This tool preserves every reference exactly as designed.
+PCB fabricators typically require a minimum panel size (e.g. 50×50 mm). When two small prototype boards are panelised together, standard KiCad merge methods re-annotate reference designators, breaking the match between the physical silkscreen, schematic, BOM, and test procedures. 
 
 ## The problem
 
@@ -15,6 +15,21 @@ footprint's `(path "/SYMBOL_UUID")` field. Copy-pasting symbols in the
 editor reassigns new UUIDs, breaking every footprint↔symbol link silently.
 KiCad then falls back to reference-string matching and re-associates
 footprints incorrectly, corrupting the merged design.
+
+## What this tool is for
+
+The primary use case is **proto panelisation**: two small boards merged
+onto one panel to meet a fabricator's minimum panel size requirement
+(typically 50×50 mm).
+
+The guarantee the tool provides is:
+
+> Every reference designator on the physical silkscreen matches exactly
+> what is in the merged schematic and BOM — with zero re-annotation.
+
+This keeps test procedures, probe notes, and firmware pin maps consistent
+from the moment the panel arrives on the bench.
+
 
 ## The solution
 
@@ -91,6 +106,34 @@ python3 merge_projects.py  Project1/  Project2/  --gap-sch 80  --gap-pcb 40
 - kicad_pcb_merge.py          ← stage 3
 
 All four scripts must be in the same directory.
+
+## ⚠ Read before opening the merged project in KiCad
+
+**The merged project is not plug-and-play. The following are expected and require manual attention:**
+
+### PCB
+- **Boards need manual repositioning** — the tool places them side by side with
+  a fixed gap. You still need to arrange them into your final panel
+  layout, add board-edge cuts, V-score lines, and tooling strips manually.
+  
+- **Inter-board ratsnest warnings are normal** — nets with the same name
+  in both designs (e.g. `GND`, `+3V3`) are merged into one net in the
+  combined netlist. KiCad will show unrouted connections between the two
+  boards for these nets. This is expected — they are physically separate
+  supplies that happen to share a name. **Do not route them.** Use the
+  DRC exclusion list to silence the warnings, or rename the nets in the
+  source projects before merging (e.g. `GND_TRA`, `GND_UTR`) if you need
+  them to be truly independent in the netlist.
+
+### Schematic
+- **The two designs are not electrically connected** — the merge is
+  purely additive. No cross-wiring is created.
+- **Power symbols with the same name share a net** — same rule as PCB
+  above. If `+3V3` appears in both projects it becomes one net on the
+  combined sheet. Rename before merging if isolation is needed. 
+  Otherwise simply accept it as it is, but it may anoy with unwanted highlighting.
+
+---
 
 ## License
 
