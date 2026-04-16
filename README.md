@@ -50,11 +50,11 @@ python3 merge_projects.py  Project1/  Project2/
 
 Produces a single KiCad project folder beside the source projects:
 
-Merge-Project1-Project2/
-Merge-Project1-Project2.kicad_pro   ← open this in KiCad
-Merge-Project1-Project2.kicad_sch
-Merge-Project1-Project2.kicad_pcb
-Merge-Project1-Project2.kicad_prl
+- Merge-Project1-Project2/
+- Merge-Project1-Project2.kicad_pro   ← open this in KiCad
+- Merge-Project1-Project2.kicad_sch
+- Merge-Project1-Project2.kicad_pcb
+- Merge-Project1-Project2.kicad_prl
 
 
 Dry-run first to verify everything before writing:
