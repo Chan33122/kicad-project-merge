@@ -342,6 +342,90 @@ def repoint_instances(sch: str,
 
 
 # ---------------------------------------------------------------------------
+# Helpers: shared-net renaming in SCH
+# ---------------------------------------------------------------------------
+
+_NET_PREFIX = "__"
+
+# Matches (label "NAME"), (global_label "NAME"), (hierarchical_label "NAME")
+_LABEL_RE = re.compile(
+    r'(\((?:label|global_label|hierarchical_label)\s+)"([^"]+)"')
+
+
+def _rename_sch_nets(sch: str, shared: set[str]) -> str:
+    """
+    Add _NET_PREFIX to every shared net name in the PLACED section of *sch*.
+
+    Two token forms carry the net name in a power symbol:
+      (property "Reference" "#PWR<n>")   ← identifies this as a power symbol
+      (property "Value"     "GND")        ← this IS the net name — rename this
+
+    Also renames wire-level net labels:
+      (label "NAME"), (global_label "NAME"), (hierarchical_label "NAME")
+
+    The lib_symbols template block is never touched.
+    """
+    if not shared:
+        return sch
+
+    prefix = _NET_PREFIX
+
+    # Split lib_symbols out — never rename inside templates
+    lib_start, lib_end = _find_block(sch, '(lib_symbols')
+    if lib_start != -1:
+        before  = sch[:lib_start]
+        lib_blk = sch[lib_start:lib_end]
+        after   = sch[lib_end:]
+    else:
+        before, lib_blk, after = '', '', sch
+
+    # ── Wire labels ──────────────────────────────────────────────────────
+    def _repl_label(m):
+        name = m.group(2)
+        if name in shared and not name.startswith(prefix):
+            return f'{m.group(1)}"{prefix}{name}"'
+        return m.group(0)
+
+    before = _LABEL_RE.sub(_repl_label, before)
+    after  = _LABEL_RE.sub(_repl_label, after)
+
+    # ── Power symbols — process symbol by symbol ──────────────────────────
+    # Identifier: (property "Reference" "#PWR...")
+    # Net name  : (property "Value" "NAME")  ← rename this one
+    def _rename_power_symbols(text):
+        result, pos = [], 0
+        # Pattern works on both full-file text and standalone element strings
+        for m in re.finditer(r'\(symbol\s*\n', text):
+            result.append(text[pos:m.start()])
+            start = m.start()
+            depth = 0
+            for i in range(start, len(text)):
+                if text[i] == '(':
+                    depth += 1
+                elif text[i] == ')':
+                    depth -= 1
+                    if depth == 0:
+                        block = text[start:i + 1]
+                        pos   = i + 1
+                        # Only act on #PWR symbols
+                        if re.search(r'\(property\s+"Reference"\s+"#PWR', block):
+                            def _rv(mm):
+                                n = mm.group(1)
+                                if n in shared and not n.startswith(prefix):
+                                    return f'(property "Value" "{prefix}{n}"'
+                                return mm.group(0)
+                            block = re.sub(
+                                r'\(property\s+"Value"\s+"([^"]+)"', _rv, block)
+                        result.append(block)
+                        break
+        result.append(text[pos:])
+        return ''.join(result)
+
+    after = _rename_power_symbols(after)
+    return before + lib_blk + after
+
+
+# ---------------------------------------------------------------------------
 # Assembler
 # ---------------------------------------------------------------------------
 
@@ -436,6 +520,25 @@ def merge_schematics(same_dir: Path, offset_dir: Path, out_dir: Path,
 
     # ── Shift offset elements (Y shift covers at/xy/start/end) ────────────
     shifted_offset = [shift_element(e, dy) for e in elems_offset]
+
+    # ── Rename shared nets in offset elements with __ prefix ──────────────
+    # Collect net names present in both PCB files
+    same_pcb_path   = same_dir   / (same_path.stem   + '.kicad_pcb')
+    offset_pcb_path = offset_dir / (offset_path.stem + '.kicad_pcb')
+    shared_nets: set[str] = set()
+    if same_pcb_path.exists() and offset_pcb_path.exists():
+        def _pcb_net_names(t):
+            return {m.group(1) for m in
+                    re.finditer(r'\(net\s+\d+\s+"([^"]+)"\)', t)}
+        shared_nets = (
+            _pcb_net_names(same_pcb_path.read_text(encoding="utf-8")) &
+            _pcb_net_names(offset_pcb_path.read_text(encoding="utf-8"))
+        )
+    if shared_nets:
+        shifted_offset = [_rename_sch_nets(e, shared_nets) for e in shifted_offset]
+        print(f"\n  Shared nets renamed with '{_NET_PREFIX}' prefix"
+              f" in offset project: {len(shared_nets)}")
+        print(f"    sample: {sorted(shared_nets)[:6]}")
 
     # ── Repoint instances ─────────────────────────────────────────────────
     merge_uuid      = str(uuid.uuid4())

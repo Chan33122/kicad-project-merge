@@ -154,6 +154,42 @@ def remap_net_ids(text: str, remap: dict[int, int]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Helpers: shared-net renaming in PCB
+# ---------------------------------------------------------------------------
+
+_NET_PREFIX = "__"
+
+
+def _rename_pcb_nets(pcb: str, shared: set[str]) -> str:
+    """
+    Add _NET_PREFIX to every shared net name in *pcb*.
+    Covers:
+      (net ID "name")      — top-level net table and pad references
+      (net_name "name")    — zone fill references
+    Only renames names present in *shared* that are not already prefixed.
+    """
+    if not shared:
+        return pcb
+    prefix = _NET_PREFIX
+
+    def _repl_net(m):
+        name = m.group(2)
+        if name in shared and not name.startswith(prefix):
+            return f'(net {m.group(1)} "{prefix}{name}")'
+        return m.group(0)
+
+    def _repl_netname(m):
+        name = m.group(1)
+        if name in shared and not name.startswith(prefix):
+            return f'(net_name "{prefix}{name}")'
+        return m.group(0)
+
+    pcb = re.sub(r'\(net\s+(\d+)\s+"([^"]+)"\)', _repl_net,     pcb)
+    pcb = re.sub(r'\(net_name\s+"([^"]+)"\)',     _repl_netname, pcb)
+    return pcb
+
+
+# ---------------------------------------------------------------------------
 # Helpers: coordinate shifting
 # ---------------------------------------------------------------------------
 
@@ -417,6 +453,17 @@ def merge_pcbs(same_dir: Path, offset_dir: Path, out_dir: Path,
     # ── Net tables ───────────────────────────────────────────────────────
     nets1 = extract_nets(same_pcb)
     nets2 = extract_nets(offset_pcb)
+
+    # Rename shared net names in offset PCB with __ prefix
+    shared_nets = {n for n in nets1.values() if n} & {n for n in nets2.values() if n}
+    if shared_nets:
+        offset_pcb = _rename_pcb_nets(offset_pcb, shared_nets)
+        # Rebuild nets2 after rename so merged table is consistent
+        nets2 = extract_nets(offset_pcb)
+        print(f"\n  Shared nets renamed with '{_NET_PREFIX}' prefix"
+              f" in offset project: {len(shared_nets)}")
+        print(f"    sample: {sorted(shared_nets)[:6]}")
+
     merged_nets, remap1, remap2 = build_merged_nets(nets1, nets2)
     net_text = net_table_text(merged_nets)
 
