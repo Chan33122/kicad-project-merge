@@ -4,6 +4,10 @@
 Merge two KiCad 8 projects into a single ready-to-open project — without
 breaking the schematic↔PCB link.
 
+## Motivation
+
+PCB fabricators typically require a minimum panel size (e.g. 50×50 mm). When two small prototype boards are panelised together, standard KiCad merge methods re-annotate reference designators, breaking the match between the physical silkscreen, schematic, BOM, and test procedures. This tool preserves every reference exactly as designed.
+
 ## The problem
 
 KiCad links PCB footprints to schematic symbols via a UUID stored in the
