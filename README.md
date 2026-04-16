@@ -109,6 +109,43 @@ All four scripts must be in the same directory.
 
 ## ⚠ Read before opening the merged project in KiCad
 
+### Net isolation — shared net names
+
+Power nets and signal nets with identical names in both projects (e.g.
+`GND`, `+3V3`, `+1V8`, `+5V`) are automatically renamed in the offset
+project by adding a `__` prefix:
+
+| Original (same-project) | Renamed (offset-project) |
+|---|---|
+| `GND` | `__GND` |
+| `+3V3` | `__+3V3` |
+| `+1V8` | `__+1V8` |
+| `+5V` | `__+5V` |
+
+This renaming is applied consistently in three places:
+
+- **Schematic power symbols** — the `(property "Value")` of every
+  `#PWR<n>` symbol whose net name is shared. This is the field KiCad
+  uses to assign the net name to all pins connected to that power rail.
+- **Schematic wire labels** — any `(label)`, `(global_label)`, or
+  `(hierarchical_label)` carrying a shared net name.
+- **PCB net table and pad references** — the net name string in the
+  top-level net table and inside every pad's `(net ID "name")` field,
+  as well as zone fill `(net_name "name")` references.
+
+The result is that the two boards are **fully electrically independent**
+in the merged KiCad project. `GND` and `__GND` are separate nets with
+no connection between them. KiCad will not show any inter-board ratsnest
+or unrouted connections.
+
+### What this means on the bench
+
+The physical boards share no copper — each board's ground plane is its
+own island on the panel. If you need the two boards to share a common
+ground during test, add a wire between their GND test points manually.
+This is the correct approach for an RF front-end panel where ground
+coupling between two sensitive circuits would be undesirable anyway.
+
 **The merged project is not plug-and-play. The following are expected and require manual attention:**
 
 ### PCB
@@ -116,22 +153,14 @@ All four scripts must be in the same directory.
   a fixed gap. You still need to arrange them into your final panel
   layout, add board-edge cuts, V-score lines, and tooling strips manually.
   
-- **Inter-board ratsnest warnings are normal** — nets with the same name
-  in both designs (e.g. `GND`, `+3V3`) are merged into one net in the
-  combined netlist. KiCad will show unrouted connections between the two
-  boards for these nets. This is expected — they are physically separate
-  supplies that happen to share a name. **Do not route them.** Use the
-  DRC exclusion list to silence the warnings, or rename the nets in the
-  source projects before merging (e.g. `GND_TRA`, `GND_UTR`) if you need
-  them to be truly independent in the netlist.
+
 
 ### Schematic
 - **The two designs are not electrically connected** — the merge is
   purely additive. No cross-wiring is created.
-- **Power symbols with the same name share a net** — same rule as PCB
-  above. If `+3V3` appears in both projects it becomes one net on the
-  combined sheet. Rename before merging if isolation is needed. 
-  Otherwise simply accept it as it is, but it may anoy with unwanted highlighting.
+
+
+
 
 ---
 
